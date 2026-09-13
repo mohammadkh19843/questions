@@ -44,25 +44,36 @@ def get_chat_id(message):
     )
 
 
-def send_quiz(
+def send_poll(
     chat_id,
     question,
     options,
-    correct_option_id,
+    poll_type="quiz",
+    correct_option_id=None,
     explanation="",
 ):
     """
-    ارسال یک Quiz واقعی تلگرام.
+    ارسال Poll یا Quiz واقعی به تلگرام.
     """
+
+    if poll_type == "quiz":
+        return bot.send_poll(
+            chat_id=chat_id,
+            question=question,
+            options=options,
+            type="quiz",
+            correct_option_id=correct_option_id,
+            is_anonymous=False,
+            explanation=explanation or None,
+        )
 
     return bot.send_poll(
         chat_id=chat_id,
         question=question,
         options=options,
-        type="quiz",
-        correct_option_id=correct_option_id,
+        type="regular",
         is_anonymous=False,
-        explanation=explanation or None,
+        allows_multiple_answers=False,
     )
 
 
@@ -86,10 +97,14 @@ def publish_question(question_id, chat_id):
 
     options = json.loads(row["options_json"])
 
-    result = send_quiz(
+    if row["poll_type"] == "quiz" and row["correct_option_id"] is None:
+        raise ValueError("Quiz does not have a correct option")
+
+    result = send_poll(
         chat_id=chat_id,
         question=row["question"],
         options=options,
+        poll_type=row["poll_type"],
         correct_option_id=row["correct_option_id"],
         explanation=row["analysis"],
     )
