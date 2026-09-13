@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Questions</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>🗳️ Questions</h1>
+      <p>ساخت سؤال و Quiz برای تلگرام</p>
+    </header>
+
+    <section class="card">
+      <label for="question">سؤال</label>
+      <textarea id="question" placeholder="سؤال خود را وارد کنید..."></textarea>
+
+      <div class="section-title">گزینه‌ها</div>
+      <div id="options"></div>
+
+      <button id="addOption" class="secondary">＋ افزودن گزینه</button>
+
+      <div class="row">
+        <div>
+          <label for="pollType">نوع</label>
+          <select id="pollType">
+            <option value="quiz">Quiz</option>
+            <option value="regular">نظرسنجی</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="correctBox">
+        <label for="correctOption">پاسخ صحیح</label>
+        <select id="correctOption"></select>
+      </div>
+
+      <label for="analysis">تحلیل سؤال</label>
+      <textarea id="analysis" placeholder="چرا پاسخ صحیح است؟ چرا سایر گزینه‌ها غلط هستند؟"></textarea>
+
+      <label for="postText">متن آماده پست</label>
+      <textarea id="postText" placeholder="متنی که بعداً برای انتشار استفاده می‌شود..."></textarea>
+
+      <button id="save" class="primary">💾 ذخیره سؤال</button>
+      <p id="result"></p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
