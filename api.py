@@ -5,12 +5,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from database import init_db, insert_question
+from database import init_db, insert_question, get_connection
+from bot import publish_question
+
 
 app = FastAPI(title="Questions API")
 
 CONTENT_DIR = Path("content")
 CONTENT_DIR.mkdir(exist_ok=True)
+
 init_db()
 
 
@@ -32,12 +35,15 @@ class QuestionCreate(BaseModel):
 
 def next_content_id() -> str:
     numbers = []
+
     for path in CONTENT_DIR.glob("CNT-*"):
         try:
             numbers.append(int(path.name.split("-")[1]))
         except (IndexError, ValueError):
             pass
+
     number = max(numbers, default=0) + 1
+
     return f"CNT-{number:06d}"
 
 
@@ -51,22 +57,37 @@ def create_question(data: QuestionCreate):
     options = [x.strip() for x in data.options]
 
     if any(not x for x in options):
-        raise HTTPException(400, "همه گزینه‌ها باید پر شوند.")
+        raise HTTPException(
+            status_code=400,
+            detail="همه گزینه‌ها باید پر شوند.",
+        )
 
     if len(set(options)) != len(options):
-        raise HTTPException(400, "گزینه‌های تکراری مجاز نیستند.")
+        raise HTTPException(
+            status_code=400,
+            detail="گزینه‌های تکراری مجاز نیستند.",
+        )
 
     if data.type == "quiz":
         if data.correct_option_id is None:
-            raise HTTPException(400, "برای Quiz باید پاسخ صحیح انتخاب شود.")
+            raise HTTPException(
+                status_code=400,
+                detail="برای Quiz باید پاسخ صحیح انتخاب شود.",
+            )
+
         if not 0 <= data.correct_option_id < len(options):
-            raise HTTPException(400, "شماره پاسخ صحیح نامعتبر است.")
+            raise HTTPException(
+                status_code=400,
+                detail="شماره پاسخ صحیح نامعتبر است.",
+            )
     else:
         data.correct_option_id = None
 
     content_id = next_content_id()
+
     folder = CONTENT_DIR / content_id
     media = folder / "media"
+
     media.mkdir(parents=True)
 
     question_json = {
@@ -89,7 +110,7 @@ def create_question(data: QuestionCreate):
         "question": data.question.strip(),
         "options": options,
         "type": data.type,
-        "is_anonymous": True,
+        "is_anonymous": False,
         "allows_multiple_answers": False,
     }
 
@@ -97,24 +118,40 @@ def create_question(data: QuestionCreate):
         telegram_json["correct_option_id"] = data.correct_option_id
 
     (folder / "question.json").write_text(
-        json.dumps(question_json, ensure_ascii=False, indent=2),
+        json.dumps(
+            question_json,
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
-    analysis = data.analysis.strip() or "تحلیل هنوز تکمیل نشده است."
+    analysis = (
+        data.analysis.strip()
+        or "تحلیل هنوز تکمیل نشده است."
+    )
+
     (folder / "analysis.md").write_text(
         f"# تحلیل {content_id}\n\n{analysis}\n",
         encoding="utf-8",
     )
 
-    post = data.post_text.strip() or data.question.strip()
+    post = (
+        data.post_text.strip()
+        or data.question.strip()
+    )
+
     (folder / "post.md").write_text(
         f"# پست {content_id}\n\n{post}\n",
         encoding="utf-8",
     )
 
     (folder / "telegram.json").write_text(
-        json.dumps(telegram_json, ensure_ascii=False, indent=2),
+        json.dumps(
+            telegram_json,
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -122,17 +159,96 @@ def create_question(data: QuestionCreate):
         (
             content_id,
             data.question.strip(),
-            json.dumps(options, ensure_ascii=False),
+            json.dumps(
+                options,
+                ensure_ascii=False,
+            ),
             data.type,
             data.correct_option_id,
             data.analysis.strip(),
             data.post_text.strip(),
-            data.telegram_user.id if data.telegram_user else None,
+            data.telegram_user.id
+            if data.telegram_user
+            else None,
             "DRAFT",
         )
     )
 
-    return {"success": True, "content_id": content_id}
+    return {
+        "success": True,
+        "content_id": content_id,
+    }
 
 
-app.mount("/", StaticFiles(directory="miniapp", html=True), name="miniapp")
+@app.post("/api/questions/{question_id}/publish")
+def publish_question_api(question_id: int):
+    """
+    انتشار سؤال در تلگرام.
+    """
+
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM questions
+            WHERE id = ?
+            """,
+            (question_id,),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="سؤال پیدا نشد.",
+        )
+
+    if row["telegram_user_id"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="شناسه کاربر تلگرام برای این سؤال ثبت نشده است.",
+        )
+
+    if row["status"] == "PUBLISHED":
+        raise HTTPException(
+            status_code=400,
+            detail="این سؤال قبلاً منتشر شده است.",
+        )
+
+    try:
+        poll = publish_question(
+            question_id=question_id,
+            chat_id=row["telegram_user_id"],
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"خطا در انتشار تلگرام: {exc}",
+        )
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE questions
+            SET status = ?
+            WHERE id = ?
+            """,
+            ("PUBLISHED", question_id),
+        )
+        conn.commit()
+
+    return {
+        "success": True,
+        "question_id": question_id,
+        "status": "PUBLISHED",
+        "telegram_message_id": poll.message_id,
+    }
+
+
+app.mount(
+    "/",
+    StaticFiles(
+        directory="miniapp",
+        html=True,
+    ),
+    name="miniapp",
+)
