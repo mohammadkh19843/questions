@@ -180,10 +180,10 @@ def create_question(data: QuestionCreate):
     }
 
 
-@app.post("/api/questions/{question_id}/publish")
-def publish_question_api(question_id: int):
+@app.post("/api/questions/{content_id}/publish")
+def publish_question_api(content_id: str):
     """
-    انتشار سؤال در تلگرام.
+    انتشار سؤال بر اساس content_id در تلگرام.
     """
 
     with get_connection() as conn:
@@ -191,9 +191,9 @@ def publish_question_api(question_id: int):
             """
             SELECT *
             FROM questions
-            WHERE id = ?
+            WHERE content_id = ?
             """,
-            (question_id,),
+            (content_id,),
         ).fetchone()
 
     if row is None:
@@ -216,7 +216,7 @@ def publish_question_api(question_id: int):
 
     try:
         poll = publish_question(
-            question_id=question_id,
+            question_id=row["id"],
             chat_id=row["telegram_user_id"],
         )
     except Exception as exc:
@@ -230,15 +230,15 @@ def publish_question_api(question_id: int):
             """
             UPDATE questions
             SET status = ?
-            WHERE id = ?
+            WHERE content_id = ?
             """,
-            ("PUBLISHED", question_id),
+            ("PUBLISHED", content_id),
         )
         conn.commit()
 
     return {
         "success": True,
-        "question_id": question_id,
+        "content_id": content_id,
         "status": "PUBLISHED",
         "telegram_message_id": poll.message_id,
     }
