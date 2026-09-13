@@ -1,5 +1,3 @@
-import json
-
 from telebot import TeleBot
 from telebot.types import (
     InlineKeyboardMarkup,
@@ -41,6 +39,28 @@ def get_chat_id(message):
         message.chat.id,
         f"Chat ID:\n`{message.chat.id}`",
         parse_mode="Markdown",
+    )
+
+
+def send_quiz(
+    chat_id,
+    question,
+    options,
+    correct_option_id,
+    explanation="",
+):
+    """
+    ارسال یک Quiz واقعی تلگرام.
+    """
+
+    return bot.send_poll(
+        chat_id=chat_id,
+        question=question,
+        options=options,
+        type="quiz",
+        correct_option_id=correct_option_id,
+        is_anonymous=False,
+        explanation=explanation or None,
     )
 
 
