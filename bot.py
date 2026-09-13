@@ -1,3 +1,5 @@
+import json
+
 from telebot import TeleBot
 from telebot.types import (
     InlineKeyboardMarkup,
@@ -6,7 +8,7 @@ from telebot.types import (
 )
 
 from config import BOT_TOKEN, WEBAPP_URL
-from database import init_db
+from database import init_db, get_connection
 
 
 bot = TeleBot(BOT_TOKEN)
@@ -62,6 +64,37 @@ def send_quiz(
         is_anonymous=False,
         explanation=explanation or None,
     )
+
+
+def publish_question(question_id, chat_id):
+    """
+    خواندن سؤال از دیتابیس و انتشار آن در تلگرام.
+    """
+
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM questions
+            WHERE id = ?
+            """,
+            (question_id,),
+        ).fetchone()
+
+    if row is None:
+        raise ValueError("Question not found")
+
+    options = json.loads(row["options_json"])
+
+    result = send_quiz(
+        chat_id=chat_id,
+        question=row["question"],
+        options=options,
+        correct_option_id=row["correct_option_id"],
+        explanation=row["analysis"],
+    )
+
+    return result
 
 
 if __name__ == "__main__":
